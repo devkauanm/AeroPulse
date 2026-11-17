@@ -1822,6 +1822,21 @@
   background: rgba(239, 68, 68, 0.07);
 }
 
+.status-cell {
+  display: inline-grid;
+  justify-items: start;
+  gap: 5px;
+}
+
+.status-reason {
+  max-width: 210px;
+  color: #9aa7b3;
+  font-size: 8px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .date-cell {
   color: #8b99a6;
   font-size: 8px;

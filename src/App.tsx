@@ -44,6 +44,7 @@ type Lead = {
   role: string
   classification: 'quente' | 'morno' | 'frio' | 'na'
   status: string
+  reason: string
 }
 
 type Feedback = {
@@ -428,6 +429,10 @@ function mapLead(record: Record<string, unknown>, index: number): Lead {
     'lead_classification', 'lead_temperature', 'score_category',
   ])
   const status = readValue(record, ['status_final', 'final_status', 'status', 'lead_status', 'situacao', 'situação'])
+  const reason = readValue(record, [
+    'detalhes_log', 'details_log', 'motivo_erro', 'motivoErro', 'motivo',
+    'reason', 'invalid_reason', 'validation_error', 'error_reason',
+  ])
   return {
     id: readValue(record, ['id', 'uuid']) || `${index}`,
     createdAt: readValue(record, ['created_at', 'createdAt', 'data_criacao', 'data', 'received_at', 'timestamp']),
@@ -438,6 +443,7 @@ function mapLead(record: Record<string, unknown>, index: number): Lead {
     role: readValue(record, ['role', 'cargo', 'job_title', 'position']) || '—',
     classification: normalizeClassification(classification),
     status: normalizeStatus(status),
+    reason,
   }
 }
 
@@ -661,7 +667,7 @@ function Dashboard() {
                       <td><div className="lead-identity"><span className={`lead-avatar lead-avatar-${index % 5}`}>{lead.name.slice(0, 1).toUpperCase()}</span><span><strong>{lead.name}</strong><small>{lead.email || 'E-mail não informado'}</small></span></div></td>
                       <td><div className="company-cell"><strong>{lead.company}</strong><small>{lead.role}</small></div></td>
                       <td><ClassificationBadge classification={lead.classification} /></td>
-                      <td><StatusBadge status={lead.status} /></td>
+                      <td><StatusBadge reason={lead.reason} status={lead.status} /></td>
                       <td><span className="date-cell">{formatDate(lead.createdAt)}</span></td>
                       <td><a aria-label={`Enviar e-mail para ${lead.name}`} aria-disabled={!lead.email} className="row-action" href={lead.email ? `mailto:${lead.email}` : undefined} title={lead.email ? 'Enviar e-mail' : 'Lead sem e-mail'}><ArrowUpRight size={15} /></a></td>
                     </tr>
@@ -690,7 +696,7 @@ function ClassificationBadge({ classification }: { classification: Lead['classif
   return <span className={`badge classification-badge classification-${classification}`}><span />{label}</span>
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, reason }: { status: string; reason: string }) {
   const normalized = status.toLowerCase()
   const variant = normalized.includes('crm') ? 'crm'
     : normalized.includes('nutri') ? 'nurturing'
@@ -698,7 +704,16 @@ function StatusBadge({ status }: { status: string }) {
         : normalized.includes('inválido') || normalized.includes('invalido') ? 'invalid'
           : normalized.includes('erro') ? 'error'
             : 'pending'
-  return <span className={`badge status-badge status-${variant}`}><span />{status}</span>
+  return (
+    <span className="status-cell">
+      <span className={`badge status-badge status-${variant}`}><span />{status}</span>
+      {variant === 'invalid' && (
+        <small className="status-reason" title={reason || 'Motivo não informado pelo workflow'}>
+          {reason || 'Motivo não informado pelo workflow'}
+        </small>
+      )}
+    </span>
+  )
 }
 
 function App() {
