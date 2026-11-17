@@ -1,0 +1,945 @@
+{
+  "name": "AeroPulse — Automação de leads",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const lead = $('Validar lead').item.json;\nconst consulta = $('Supabase — Verificar duplicidade').item.json;\n\nlet classificacao = 'N/A';\nlet status;\nlet detalhes_log = lead.motivoErro || null;\n\nif (lead.status === 'inválido') {\n  status = 'inválido';\n  detalhes_log = detalhes_log || 'Campos obrigatórios ausentes ou e-mail inválido';\n} else if (consulta.error) {\n  status = 'erro';\n  detalhes_log = 'Falha ao consultar duplicidade no Supabase';\n} else if (consulta.email) {\n  status = 'duplicado';\n  detalhes_log = 'E-mail já cadastrado anteriormente na base';\n} else {\n  // Captura e limpa a resposta do Gemini de qualquer texto extra\n  let respostaIA = '';\n  try {\n    const inputNode = $input.item.json;\n    const textoBruto = \n      inputNode?.content?.parts?.[0]?.text || \n      inputNode?.text || \n      inputNode?.response || \n      JSON.stringify(inputNode);\n      \n    const textoLower = textoBruto.toLowerCase();\n    if (textoLower.includes('quente')) respostaIA = 'quente';\n    else if (textoLower.includes('morno')) respostaIA = 'morno';\n    else if (textoLower.includes('frio')) respostaIA = 'frio';\n  } catch (e) {\n    respostaIA = '';\n  }\n\n  if (['quente', 'morno', 'frio'].includes(respostaIA)) {\n    classificacao = respostaIA;\n    detalhes_log = 'Classificado via IA (Google Gemini)';\n  } else {\n    // Fallback por Regex caso a IA falhe\n    const cargo = (lead.cargo || '').toLowerCase();\n    const empresa = (lead.empresa || '').toLowerCase();\n    const cargoDecisor = /\\b(ceo|cto|cfo|cio|coo|founder|fundador|presidente|diretor|diretora|vp|vice-presidente|chief|head)\\b/.test(cargo);\n    const empresaGrande = /\\b(enterprise|corp|corporation|global|multinacional|agro|engenharia|mineracao|energia)\\b/.test(empresa);\n    const cargoGestao = /\\b(manager|gerente|gestor|gestora|coordenador|coordenadora|supervisor|supervisora|engenheiro)\\b/.test(cargo);\n\n    if (cargoDecisor || empresaGrande) {\n      classificacao = 'quente';\n    } else if (cargoGestao) {\n      classificacao = 'morno';\n    } else {\n      classificacao = 'frio';\n    }\n    detalhes_log = 'Classificado via regra fixa (Fallback automático)';\n  }\n\n  status = classificacao === 'frio' ? 'nutrição' : 'enviado ao CRM';\n}\n\nreturn {\n  json: {\n    nome: lead.nome,\n    email: lead.email,\n    telefone: lead.telefone,\n    empresa: lead.empresa,\n    cargo: lead.cargo,\n    classificacao,\n    status,\n    detalhes_log,\n    created_at: new Date().toISOString(),\n  },\n};"
+      },
+      "id": "915324e5-ac87-4be5-aa5d-e7b8cada7358",
+      "name": "Classificar lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        0
+      ],
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "inválido",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "duplicado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "erro",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "or"
+              },
+              "renameOutput": true,
+              "outputKey": "Rejeitado"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.classificacao }}",
+                    "rightValue": "frio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Frio — nutrição"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.classificacao }}",
+                    "rightValue": "quente",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.classificacao }}",
+                    "rightValue": "morno",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "or"
+              },
+              "renameOutput": true,
+              "outputKey": "Qualificado — CRM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a8672102-4a98-43da-a9a2-bd407db87b8e",
+      "name": "Switch — Roteamento por classificação",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1200,
+        -16
+      ],
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c81",
+              "name": "nome",
+              "value": "={{ $json.nome }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c82",
+              "name": "email",
+              "value": "={{ $json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c83",
+              "name": "telefone",
+              "value": "={{ $json.telefone }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c84",
+              "name": "empresa",
+              "value": "={{ $json.empresa }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c85",
+              "name": "cargo",
+              "value": "={{ $json.cargo }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c86",
+              "name": "classificacao",
+              "value": "={{ $json.classificacao }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c87",
+              "name": "status",
+              "value": "nutrição",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c88",
+              "name": "detalhes_log",
+              "value": "={{ $json.detalhes_log }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c89",
+              "name": "created_at",
+              "value": "={{ $json.created_at }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "029b0b72-45ac-4f34-ab29-c0b3e88c404d",
+      "name": "Set — Marcar nutrição",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1632,
+        48
+      ],
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://httpbin.org/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { nome: $json.nome, email: $json.email, telefone: $json.telefone, empresa: $json.empresa, cargo: $json.cargo, classificacao: $json.classificacao } }}",
+        "options": {}
+      },
+      "id": "975c8b8a-b2fb-494b-b305-41f849d8cc98",
+      "name": "HTTP Request — Enviar ao CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1408,
+        384
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c91",
+              "name": "nome",
+              "value": "={{ $('Classificar lead').item.json.nome }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c92",
+              "name": "email",
+              "value": "={{ $('Classificar lead').item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c93",
+              "name": "telefone",
+              "value": "={{ $('Classificar lead').item.json.telefone }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c94",
+              "name": "empresa",
+              "value": "={{ $('Classificar lead').item.json.empresa }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c95",
+              "name": "cargo",
+              "value": "={{ $('Classificar lead').item.json.cargo }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c96",
+              "name": "classificacao",
+              "value": "={{ $('Classificar lead').item.json.classificacao }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c97",
+              "name": "status",
+              "value": "enviado ao CRM",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c98",
+              "name": "detalhes_log",
+              "value": "={{ $('Classificar lead').item.json.detalhes_log }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0c99",
+              "name": "created_at",
+              "value": "={{ $('Classificar lead').item.json.created_at }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "918d2bb7-3ecd-4a1e-bcd8-93b81cf38ddf",
+      "name": "Set — Marcar enviado ao CRM",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1648,
+        336
+      ],
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0ca1",
+              "name": "nome",
+              "value": "={{ $('Classificar lead').item.json.nome }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0ca2",
+              "name": "email",
+              "value": "={{ $('Classificar lead').item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0ca3",
+              "name": "telefone",
+              "value": "={{ $('Classificar lead').item.json.telefone }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0ca4",
+              "name": "empresa",
+              "value": "={{ $('Classificar lead').item.json.empresa }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0ca5",
+              "name": "cargo",
+              "value": "={{ $('Classificar lead').item.json.cargo }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0ca6",
+              "name": "classificacao",
+              "value": "={{ $('Classificar lead').item.json.classificacao }}",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0ca7",
+              "name": "status",
+              "value": "erro",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0ca8",
+              "name": "detalhes_log",
+              "value": "Falha na integração com o CRM após 3 tentativas",
+              "type": "string"
+            },
+            {
+              "id": "5a267621-17fa-40d1-ae47-1dc55efc0ca9",
+              "name": "created_at",
+              "value": "={{ $('Classificar lead').item.json.created_at }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "85426e96-888e-4298-8157-b888264ed767",
+      "name": "Set — Registrar erro do CRM",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1648,
+        480
+      ],
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "projectRef": "krhqwbuunczfliekijau",
+        "tableId": "leads",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "created_at",
+              "fieldValue": "={{ $json.created_at || $('Classificar lead').first().json.created_at }}"
+            },
+            {
+              "fieldId": "nome",
+              "fieldValue": "={{ $json.nome || $('Classificar lead').first().json.nome }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $json.email || $('Classificar lead').first().json.email }}"
+            },
+            {
+              "fieldId": "telefone",
+              "fieldValue": "={{ $json.telefone || $('Classificar lead').first().json.telefone }}"
+            },
+            {
+              "fieldId": "empresa",
+              "fieldValue": "={{ $json.empresa || $('Classificar lead').first().json.empresa }}"
+            },
+            {
+              "fieldId": "cargo",
+              "fieldValue": "={{ $json.cargo || $('Classificar lead').first().json.cargo }}"
+            },
+            {
+              "fieldId": "classificacao",
+              "fieldValue": "={{ $json.classificacao || $('Classificar lead').first().json.classificacao }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status || $('Classificar lead').first().json.status }}"
+            },
+            {
+              "fieldId": "detalhes_log",
+              "fieldValue": "={{ $json.detalhes_log || $('Classificar lead').first().json.detalhes_log }}"
+            }
+          ]
+        }
+      },
+      "id": "300c6103-5d54-4964-9923-423f963bdf12",
+      "name": "Supabase — Gravar registro final",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2240,
+        -16
+      ],
+      "notesInFlow": true,
+      "credentials": {
+        "supabaseOAuth2Api": {
+          "id": "G3LprIz0rUVa3hBI",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Validar lead').item.json.status === 'inválido' || !!$('Supabase — Verificar duplicidade').item.json.email || !!$('Supabase — Verificar duplicidade').item.json.error }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "cb8d1b6f-102f-4541-a759-b15154ebe0fa"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0380a7a4-ed93-4f08-9b95-10b76e03d635",
+      "name": "IF — Rejeitado ou qualificado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        368,
+        0
+      ],
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $json.body ?? $json;\nconst lead = {\n  nome: String(input.nome ?? '').trim(),\n  email: String(input.email ?? '').trim().toLowerCase(),\n  telefone: String(input.telefone ?? '').trim(),\n  empresa: String(input.empresa ?? '').trim(),\n  cargo: String(input.cargo ?? '').trim(),\n};\n\nconst obrigatoriosPreenchidos = Object.values(lead).every(Boolean);\nconst emailValido = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(lead.email);\nconst valido = obrigatoriosPreenchidos && emailValido;\n\nreturn {\n  json: {\n    ...lead,\n    valido,\n    status: valido ? 'qualificado' : 'inválido',\n  },\n};"
+      },
+      "id": "01aa1ef4-ffb6-48d3-829b-1ba9aa013788",
+      "name": "Validar lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Valida os cinco campos obrigatórios e o formato do email. Leads inválidos seguem para o log final."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "leads",
+        "options": {}
+      },
+      "id": "ae52b2ba-0102-4ca1-b07a-9462c872a231",
+      "name": "Webhook — Receber lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -480,
+        0
+      ],
+      "webhookId": "c09e926a-78c4-49e1-b355-7e7ee6ba0036",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "getAll",
+        "projectRef": "krhqwbuunczfliekijau",
+        "tableId": "leads",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "email",
+              "condition": "eq",
+              "keyValue": "={{ $('Validar lead').item.json.email }}"
+            }
+          ]
+        }
+      },
+      "id": "bb162e2a-537d-4785-aec5-1116119b4ed1",
+      "name": "Supabase — Verificar duplicidade",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        128,
+        0
+      ],
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "credentials": {
+        "supabaseOAuth2Api": {
+          "id": "G3LprIz0rUVa3hBI",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "### Etapa 1: Webhook para recebimento dos dados\n\nRecebe pelo método POST um JSON com nome, email, telefone, empresa e cargo.",
+        "height": 384,
+        "width": 288,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        -160
+      ],
+      "id": "caea08b1-de6a-4791-9ecf-3124eb3aeb1c",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "### Etapa 2: Validação dos dados fornecidos pelo lead\n\nValida os cinco campos obrigatórios e o formato do email. Leads inválidos seguem para o log final.",
+        "height": 384,
+        "width": 288,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        -160
+      ],
+      "id": "5c3e6f75-4091-4c33-9e0b-5612c7e808bb",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "### Etapa 3: Verificação de duplicidade nos registro do BD\n\n*Supabase:* Consulta leads pelo email.\nNecessário configurar credenciais do Supabase.\n\n*IF:* Preserva a separação de rejeitados e aprovados antes da classificação. Ambos seguem para a classificação, que determina o status e o Switch direciona cada caso.",
+        "height": 384,
+        "width": 544,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        32,
+        -160
+      ],
+      "id": "55badfa3-966c-443e-a8ec-4ea1ca7247d8",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "### Etapa 4: Lógica de Qualificação\n\n*Gemini:* Faz a qualificação de acordo com cargo do lead.\n\n*Code:* Rejeitados mantêm status inválido/duplicado/erro. Para aprovados: cargo decisor ou empresa de grande porte = quente; cargo de gestão = morno; fallback = frio.\n\n*Switch:* Rejeitados vão direto ao log. Leads frios são marcados para nutrição. Leads quentes/mornos seguem para o CRM.",
+        "height": 384,
+        "width": 752,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        592,
+        -160
+      ],
+      "id": "9f121594-2d50-4da7-aca4-a05c844ea29b",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash-lite",
+          "mode": "list",
+          "cachedResultName": "Gemini 2.5 Flash-Lite"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Você é um especialista em qualificação comercial (SDR) da AeroPulse, uma empresa de tecnologia aérea, drones de mapeamento e telemetria.\n\nClassifique o lead abaixo em apenas uma palavra: quente, morno ou frio.\n\nCritérios:\n- quente: cargos de alta decisão (CEO, Diretor, Fundador, Sócio, Presidente, VP, Head) OU empresas com forte sinergia com drones/mapeamento/telemetria (agro, engenharia, mineração, energia, construção, logística, segurança, tecnologia) ou de grande porte.\n- morno: cargos de média gestão ou liderança técnica (Gerente, Coordenador, Supervisor, Especialista, Engenheiro) em empresas comerciais.\n- frio: cargos operacionais, sem poder de decisão, estudantes, estagiários, autônomos sem empresa definida ou áreas sem aderência.\n\nResponda APENAS com uma única palavra em minúsculo: quente, morno ou frio. Não escreva nenhuma frase, explicação ou pontuação adicional.\n\nCargo: {{ $('Validar lead').item.json.cargo }}\nEmpresa: {{ $('Validar lead').item.json.empresa }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        0
+      ],
+      "id": "e7b42dee-cbae-40c1-95a9-f3f1d60d0a37",
+      "name": "Qualificação Comercial",
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "content": "### Etapa 6: Registro no CRM\n\n*HTTP:* Faz POST para o CRM (URL fictícia)\n\n*Marca Enviado:* Registra o status enviado ao CRM após resposta de sucesso da integração. Após isso, a equipe comercial é notificada por e-mail.\n\n*Registro de Erro:* Saída de erro do CRM: preserva os dados do lead e define status erro com a mensagem solicitada.",
+        "height": 432,
+        "width": 752,
+        "color": "#0A2E23"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        192
+      ],
+      "id": "ad70b761-7fda-4c75-a4ee-57730be42674",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "sendTo": "kauanmartins1711@gmail.com",
+        "subject": "Lead Enviado ao CRM",
+        "emailType": "text",
+        "message": "=Lead qualificado pelo sistema de automação.\n\nInformações do Lead:\nNome: {{ $json.nome }}\nEmail: {{ $json.email }}\nTelefone: {{ $json.telefone }}\nCargo: {{ $json.cargo }}\nEmpresa: {{ $json.empresa }}\n\nPróximo passo: Verificar informações do mesmo no painel de leads e contatar.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        432
+      ],
+      "id": "27e32290-0a00-4e55-90a7-56def78cecc4",
+      "name": "Notifica Equipe Comercial",
+      "webhookId": "b91e36b5-6d6d-416b-aa97-69454b927766",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "QSHcwhh5wx7LT9sl",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### Etapa 7: Marca Nutrição\n\nDefine status nutrição para leads classificados como frios e preserva os campos do lead para o log.",
+        "height": 224,
+        "width": 448,
+        "color": "#383E09"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1456,
+        -48
+      ],
+      "id": "2fc5b1c7-f193-490a-a769-0f808c201247",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "### Etapa 8: Registro Final\n\nGrava todos os caminhos em leads. A tabela precisa conter created_at, nome, email, telefone, empresa, cargo, classificacao, status e detalhes_log.",
+        "height": 224,
+        "width": 448,
+        "color": "#6F3906"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2032,
+        -96
+      ],
+      "id": "d8c07917-f540-4851-9c92-fb373c6ca9e6",
+      "name": "Sticky Note6"
+    }
+  ],
+  "pinData": {
+    "Webhook — Receber lead": [
+      {
+        "json": {
+          "headers": {
+            "host": "kauanmdev.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+            "content-length": "116",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "2804:dec:302:bdfc:5886:f8dd:eb21:97c6",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "BR",
+            "cf-ray": "a5c048e67e714835-GRU",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "origin": "http://localhost:5173",
+            "priority": "u=1, i",
+            "referer": "http://localhost:5173/",
+            "sec-ch-ua": "\"Not-A.Brand\";v=\"99\", \"Google Chrome\";v=\"157\", \"Chromium\";v=\"157\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "2804:dec:302:bdfc:5886:f8dd:eb21:97c6, 104.23.254.158",
+            "x-forwarded-host": "kauanmdev.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-38-5bf965484d-7g6gt",
+            "x-is-trusted": "yes",
+            "x-real-ip": "2804:dec:302:bdfc:5886:f8dd:eb21:97c6"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "nome": "Kauan Martins",
+            "email": "kauanteste@gmail.com",
+            "telefone": "11957533952",
+            "empresa": "N/A",
+            "cargo": "Estudante"
+          },
+          "webhookUrl": "https://kauanmdev.app.n8n.cloud/webhook/leads",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Classificar lead": {
+      "main": [
+        [
+          {
+            "node": "Switch — Roteamento por classificação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch — Roteamento por classificação": {
+      "main": [
+        [
+          {
+            "node": "Supabase — Gravar registro final",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set — Marcar nutrição",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request — Enviar ao CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set — Marcar nutrição": {
+      "main": [
+        [
+          {
+            "node": "Supabase — Gravar registro final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request — Enviar ao CRM": {
+      "main": [
+        [
+          {
+            "node": "Set — Marcar enviado ao CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set — Registrar erro do CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set — Marcar enviado ao CRM": {
+      "main": [
+        [
+          {
+            "node": "Notifica Equipe Comercial",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set — Registrar erro do CRM": {
+      "main": [
+        [
+          {
+            "node": "Supabase — Gravar registro final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF — Rejeitado ou qualificado?": {
+      "main": [
+        [
+          {
+            "node": "Qualificação Comercial",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Qualificação Comercial",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar lead": {
+      "main": [
+        [
+          {
+            "node": "Supabase — Verificar duplicidade",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook — Receber lead": {
+      "main": [
+        [
+          {
+            "node": "Validar lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase — Verificar duplicidade": {
+      "main": [
+        [
+          {
+            "node": "IF — Rejeitado ou qualificado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qualificação Comercial": {
+      "main": [
+        [
+          {
+            "node": "Classificar lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classificar lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifica Equipe Comercial": {
+      "main": [
+        [
+          {
+            "node": "Supabase — Gravar registro final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "34a385a2-fceb-42cc-aef0-a66d1614ed94",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "99f900d0b110f3c1ff932fb435926b5f010b88fcb8ca2d18171ce200af684045"
+  },
+  "nodeGroups": [],
+  "id": "ReN6XoLvDrIUXVRH",
+  "tags": []
+}
