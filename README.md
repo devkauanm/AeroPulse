@@ -6,7 +6,7 @@ Aplicação web do case técnico: formulário público de captação, pipeline d
 
 - [Documentação do projeto](./DOCUMENTACAO.md)
 - [Relato do processo de vibe coding](./RELATO_VIBE_CODING.md)
-- [Workflow n8n exportado](./AeroPulse%20—%20Automação%20de%20leads.jsonworkflow.json) *(ajuste o caminho se salvar na raiz)*
+- [Workflow n8n exportado](./AeroPulse%20—%20Automação%20de%20leads.jsonworkflow.json)
 
 ## Requisitos
 
