@@ -426,7 +426,7 @@
       "notesInFlow": true,
       "credentials": {
         "supabaseOAuth2Api": {
-          "id": "G3LprIz0rUVa3hBI",
+          "id": "SEUID_AQUI",
           "name": "Supabase account"
         }
       }
@@ -528,7 +528,7 @@
       "notesInFlow": true,
       "credentials": {
         "supabaseOAuth2Api": {
-          "id": "G3LprIz0rUVa3hBI",
+          "id": "SEUID_AQUI",
           "name": "Supabase account"
         }
       },
@@ -651,7 +651,7 @@
     },
     {
       "parameters": {
-        "sendTo": "kauanmartins1711@gmail.com",
+        "sendTo": "seuemail@gmail.com",
         "subject": "Lead Enviado ao CRM",
         "emailType": "text",
         "message": "=Lead qualificado pelo sistema de automação.\n\nInformações do Lead:\nNome: {{ $json.nome }}\nEmail: {{ $json.email }}\nTelefone: {{ $json.telefone }}\nCargo: {{ $json.cargo }}\nEmpresa: {{ $json.empresa }}\n\nPróximo passo: Verificar informações do mesmo no painel de leads e contatar.",
